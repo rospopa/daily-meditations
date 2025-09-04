@@ -133,6 +133,23 @@ def send_sms(config, meditation, meditation_number):
     """Send an SMS with the daily meditation to all recipients using Google Voice via Selenium."""
     gvoice_config = config["gvoice"]
     
+    # Create debug directory
+    debug_dir = Path("debug_logs")
+    debug_dir.mkdir(exist_ok=True)
+    
+    def save_debug_info(prefix):
+        """Save debug information including page source and screenshot."""
+        timestamp = int(time.time())
+        try:
+            # Save page source
+            with open(debug_dir / f"{prefix}_{timestamp}.html", "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+            # Save screenshot
+            driver.save_screenshot(str(debug_dir / f"{prefix}_{timestamp}.png"))
+            print(f"Saved debug info: {prefix}_{timestamp}")
+        except Exception as e:
+            print(f"Error saving debug info: {e}")
+    
     try:
         # Set up Chrome options
         chrome_options = Options()
@@ -721,21 +738,50 @@ def send_sms(config, meditation, meditation_number):
             
             # Format the message
             message = f"Daily Meditation #{meditation_number}:\n\n{meditation}"
+            print(f"Prepared message: {message[:50]}...")
+            
+            # Save current state before sending
+            save_debug_info("before_sending")
             
             # Send SMS to each recipient
             for recipient in config["recipients"]:
                 try:
+                    print(f"\n=== Processing recipient: {recipient} ===")
                     # Clean the phone number
                     phone = re.sub(r'[^\d+]', '', recipient)
                     
                     try:
                         # Click on Messages tab
                         print(f"Attempting to send to {phone}...")
-                        messages_btn = WebDriverWait(driver, 20).until(
-                            EC.element_to_be_clickable((By.XPATH, "//div[contains(text(),'Messages')]"))
-                        )
+                        save_debug_info(f"before_messages_click_{phone}")
+                        
+                        # Try multiple selectors for Messages tab
+                        messages_selectors = [
+                            (By.XPATH, "//div[contains(text(),'Messages')]"),
+                            (By.XPATH, "//span[contains(text(),'Messages')]"),
+                            (By.XPATH, "//*[contains(@aria-label, 'Messages')]")
+                        ]
+                        
+                        messages_btn = None
+                        for selector in messages_selectors:
+                            try:
+                                messages_btn = WebDriverWait(driver, 10).until(
+                                    EC.element_to_be_clickable(selector)
+                                )
+                                print(f"Found Messages tab with selector: {selector}")
+                                break
+                            except Exception as e:
+                                print(f"Messages tab not found with {selector}: {e}")
+                        
+                        if not messages_btn:
+                            raise Exception("Could not find Messages tab with any selector")
+                            
+                        # Scroll into view and click
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", messages_btn)
+                        time.sleep(1)
                         messages_btn.click()
                         print("Clicked Messages tab")
+                        save_debug_info(f"after_messages_click_{phone}")
                         time.sleep(2)
                         
                         # Click on New Message
@@ -771,12 +817,23 @@ def send_sms(config, meditation, meditation_number):
                         send_btn.click()
                         print(f"Successfully sent SMS to {phone}")
                         
-                        # Wait for message to send
-                        time.sleep(5)
+                        # Wait for message to send with verification
+                        print("Waiting for message to send...")
+                        sent = False
+                        for _ in range(10):  # Wait up to 10 seconds
+                            if "Message sent" in driver.page_source or "Sent" in driver.page_source:
+                                sent = True
+                                break
+                            time.sleep(1)
                         
-                        # Take a screenshot for verification
-                        driver.save_screenshot(f"sent_{phone}.png")
-                        print(f"Saved screenshot as sent_{phone}.png")
+                        if sent:
+                            print(f"✅ Successfully sent SMS to {phone}")
+                        else:
+                            print(f"⚠️ Message may not have been sent to {phone}")
+                        
+                        # Save debug info
+                        save_debug_info(f"after_send_{phone}")
+                        time.sleep(2)  # Small delay between recipients
                         
                     except Exception as e:
                         print(f"Error in sending process: {e}")
