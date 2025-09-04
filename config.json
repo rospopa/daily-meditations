@@ -1,0 +1,11 @@
+{
+    "email": {
+        "sender_email": "",
+        "sender_password": "",
+        "recipient_email": "",
+        "smtp_server": "smtp.gmail.com",
+        "smtp_port": 587
+    },
+    "last_sent_date": "",
+    "sent_proverbs": []
+}
