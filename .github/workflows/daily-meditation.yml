@@ -1,74 +1,251 @@
-name: Daily Meditation SMS
+name: Send Daily Meditation
 
 on:
   schedule:
-    # Runs at 8:00 AM UTC (adjust as needed)
-    - cron: '0 8 * * *'
-  workflow_dispatch:  # Allows manual triggering
+    - cron: '0 8 * * *'  # Run daily at 8:00 AM
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      test_mode:
+        description: 'Run in test mode (skips actual sending)'
+        required: false
+        default: 'false'
 
-# Set default permissions for the workflow
-permissions:
-  contents: write  # Required to push changes
+# Set environment variables that can be used across all jobs
+env:
+  PYTHONUNBUFFERED: 1  # Ensure Python output is shown in real-time
+  DEBUG: "true"        # Enable debug output
+  TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.test_mode == 'true' || 'false' }}
 
 jobs:
   send-meditation:
     runs-on: ubuntu-latest
+    
+    # Set permissions for the job
+    permissions:
+      contents: write  # Required for committing changes
+      actions: write  # Required for workflow commands
+      
+    # Set timeout to 20 minutes (default is 6 hours, but we want to fail faster if stuck)
+    timeout-minutes: 20
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # Fetch all history for all branches
-          token: ${{ secrets.GITHUB_TOKEN }}  # Use the GITHUB_TOKEN for authentication
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Required for git operations
+        token: ${{ secrets.GITHUB_TOKEN }}  # Use the built-in token
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget unzip xvfb libxss1 libappindicator3-1 fonts-liberation
+    
+    - name: Install Chrome and ChromeDriver
+      run: |
+        # Install Chrome
+        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
         
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+        # Verify Chrome installation
+        google-chrome --version
+        
+        # Install ChromeDriver matching the installed Chrome version
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+(\.\d+)?' | head -1)
+        echo "Chrome version: $CHROME_VERSION"
+        
+        # Install ChromeDriver
+        CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION%.*}")
+        echo "Installing ChromeDriver version: $CHROMEDRIVER_VERSION"
+        wget -q "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip"
+        unzip -q chromedriver_linux64.zip
+        sudo mv chromedriver /usr/local/bin/chromedriver
+        sudo chmod +x /usr/local/bin/chromedriver
+        chromedriver --version
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install selenium==4.15.2 webdriver-manager==4.0.0 pyvirtualdisplay==3.0 python-dotenv==1.0.0
+        pip install requests pillow  # For additional debugging
+    
+    - name: Set up config
+      id: config
+      env:
+        GVOICE_EMAIL: ${{ secrets.GVOICE_EMAIL }}
+        GVOICE_PASSWORD: ${{ secrets.GVOICE_PASSWORD }}
+        GVOICE_NUMBER: ${{ secrets.GVOICE_NUMBER }}
+        RECIPIENTS: ${{ secrets.RECIPIENTS }}
+      run: |
+        echo "Creating config file..."
+        python scripts/setup_config.py
+        
+        # Verify config was created
+        if [ ! -f "config.json" ]; then
+          echo "::error::Failed to create config.json"
+          exit 1
+        fi
+        
+        # Print first 2 lines of config (without sensitive data)
+        echo "Config created with the following recipients:"
+        jq -r '.recipients | length' config.json | xargs -I {} echo "Number of recipients: {}"
+    
+    - name: Run daily meditation
+      id: run-script
+      continue-on-error: true  # Continue to next step even if this fails
+      env:
+        TEST_MODE: ${{ env.TEST_MODE }}
+      run: |
+        # Create debug directory with timestamp
+        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+        DEBUG_DIR="debug_logs/run_${TIMESTAMP}"
+        mkdir -p "$DEBUG_DIR"
+        
+        # Set display for headless mode
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1920x1080x24 > "$DEBUG_DIR/xvfb.log" 2>&1 &
+        XVFB_PID=$!
+        
+        # Function to capture debug info
+        capture_debug() {
+            local prefix=$1
+            # Take screenshot if display is available
+            if [ -f "/usr/bin/import" ]; then
+                import -window root "$DEBUG_DIR/${prefix}_screenshot.png"
+            fi
+            # Save process info
+            ps aux > "$DEBUG_DIR/${prefix}_processes.txt"
+            # Save memory info
+            free -m > "$DEBUG_DIR/${prefix}_memory.txt"
+            # Save disk space
+            df -h > "$DEBUG_DIR/${prefix}_disk.txt"
+        }
+        
+        # Install scrot for screenshots if not present
+        if ! command -v import &> /dev/null; then
+            echo "Installing imagemagick for screenshots..."
+            sudo apt-get install -y imagemagick
+        fi
+        
+        # Initial debug capture
+        capture_debug "startup"
+        
+        # Run the script with debug output
+        echo "Starting meditation script..."
+        echo "TEST_MODE: $TEST_MODE"
+        
+        # Set test mode flag if needed
+        TEST_FLAG=""
+        if [ "$TEST_MODE" = "true" ]; then
+            TEST_FLAG="--test"
+            echo "Running in TEST MODE - no messages will be sent"
+        fi
+        
+        # Run the script with unbuffered output and save to log
+        python -u daily_meditation.py $TEST_FLAG 2>&1 | tee "$DEBUG_DIR/script_output.log"
+        
+        # Capture exit code
+        SCRIPT_EXIT_CODE=${PIPESTATUS[0]}
+        echo "Script exited with code: $SCRIPT_EXIT_CODE"
+        
+        # Final debug capture
+        capture_debug "shutdown"
+        
+        # Clean up Xvfb
+        if [ -n "$XVFB_PID" ]; then
+            kill -9 $XVFB_PID 2>/dev/null || true
+        fi
+        
+        # Save the exit code to be used in subsequent steps
+        echo "SCRIPT_EXIT_CODE=$SCRIPT_EXIT_CODE" >> $GITHUB_ENV
+        
+        # Exit with the script's exit code
+        exit $SCRIPT_EXIT_CODE
+    
+    - name: Upload debug artifacts
+      if: always()  # Run this step even if previous steps failed
+      uses: actions/upload-artifact@v3
+      with:
+        name: debug-artifacts
+        path: |
+          debug_logs/
+          *.log
+          *.png
+          *.html
+        retention-days: 7
+        compression-level: 9
+        
+    - name: Parse and summarize logs
+      if: always()
+      run: |
+        # Find the latest debug directory
+        LATEST_RUN=$(ls -td debug_logs/run_* | head -1)
+        
+        if [ -z "$LATEST_RUN" ]; then
+            echo "No debug directory found"
+            exit 0
+        fi
+        
+        echo "Analyzing logs from: $LATEST_RUN"
+        
+        # Create a summary file
+        SUMMARY_FILE="debug_summary_$(date +%Y%m%d_%H%M%S).md"
+        echo "# Debug Summary" > "$SUMMARY_FILE"
+        echo "## Run Details" >> "$SUMMARY_FILE"
+        echo "- **Run Directory:** $LATEST_RUN" >> "$SUMMARY_FILE"
+        echo "- **Exit Code:** ${{ env.SCRIPT_EXIT_CODE }}" >> "$SUMMARY_FILE"
+        
+        # Add script output summary
+        echo -e "\n## Script Output" >> "$SUMMARY_FILE"
+        echo '```' >> "$SUMMARY_FILE"
+        tail -n 50 "$LATEST_RUN/script_output.log" 2>/dev/null | head -n 1000 >> "$SUMMARY_FILE" || echo "No script output found" >> "$SUMMARY_FILE"
+        echo '```' >> "$SUMMARY_FILE"
+        
+        # List all debug files
+        echo -e "\n## Debug Files" >> "$SUMMARY_FILE"
+        find "$LATEST_RUN" -type f -printf "- %P (%s bytes)\n" | sort >> "$SUMMARY_FILE"
+        
+        # Upload summary as build artifact
+        echo "summary_file=$SUMMARY_FILE" >> $GITHUB_OUTPUT
+        
+    - name: Upload Debug Summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: debug-summary
+        path: ${{ steps.parse-logs.outputs.summary_file }}
+        retention-days: 7
+        
+    - name: Commit and push changes
+      if: always() && steps.run-script.outcome == 'success'  # Only commit if script ran successfully
+      run: |
+        echo "Setting up git..."
+        git config --global user.name 'GitHub Actions'
+        git config --global user.email 'actions@github.com'
+        
+        # Configure git to use the token
+        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        
+        # Check for changes to commit
+        if git status --porcelain | grep -q 'config.json'; then
+          echo "Committing changes to config.json..."
+          git add config.json
+          git commit -m "Update meditation history [skip ci]"
           
-      - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: 'latest'
-          
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install selenium webdriver-manager
-          
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxi6 libgbm1 wget unzip
-          
-      - name: Run daily meditation script
-        env:
-          GVOICE_EMAIL: ${{ secrets.GVOICE_EMAIL }}
-          GVOICE_PASSWORD: ${{ secrets.GVOICE_PASSWORD }}
-          GVOICE_NUMBER: ${{ secrets.GVOICE_NUMBER }}
-          RECIPIENTS: ${{ secrets.RECIPIENTS }}
-        run: |
-          set -e  # Exit immediately if a command exits with a non-zero status
-          
-          # Create debug directory
-          mkdir -p debug_logs
-          
-          # Function to collect debug info
-          collect_debug_info() {
-            echo "=== DEBUG INFO ==="
-            echo "Current directory: $(pwd)"
-            echo "Files in current directory:"
-            ls -la
-            echo "\n=== CHROME VERSION ==="
-            google-chrome --version || echo "Chrome not found"
-            echo "\n=== CHROMEDRIVER VERSION ==="
-            chromedriver --version || echo "Chromedriver not found"
-            echo "\n=== PYTHON VERSION ==="
-            python --version
-            echo "\n=== SELENIUM VERSION ==="
-            python -c "import selenium; print(selenium.__version__)" || echo "Selenium not found"
-          }
-          
-          # Save debug info
-          collect_debug_info > debug_logs/environment_info.txt
-          
-          # Debug: Print environment variables (without sensitive data)
+          # Push changes
+          git push origin HEAD:${{ github.ref }}
+          echo "Changes pushed successfully"
+        else
+          echo "No changes to commit"
+        fi
+    
+    - name: Check for errors
+      if: always() && steps.run-script.outcome != 'success'
+      run: |
+        echo "::error::Script execution failed. Check the debug artifacts for more information."
+        exit 1
