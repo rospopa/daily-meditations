@@ -47,27 +47,28 @@ jobs:
     
     - name: Install Chrome and ChromeDriver
       run: |
-        # Install Chrome
-        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-        sudo apt-get update
-        sudo apt-get install -y google-chrome-stable
+        # Install specific version of Chrome that we know has a matching ChromeDriver
+        CHROME_VERSION="114.0.5735.90-1"  # A stable version with known ChromeDriver
+        
+        # Download and install Chrome
+        wget -q -O google-chrome.deb "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb"
+        sudo apt-get install -y ./google-chrome.deb
+        rm google-chrome.deb
         
         # Verify Chrome installation
-        google-chrome --version
+        echo "Installed Chrome version: $(google-chrome --version)"
         
-        # Install ChromeDriver matching the installed Chrome version
-        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+(\.\d+)?' | head -1)
-        echo "Chrome version: $CHROME_VERSION"
+        # Install matching ChromeDriver
+        CHROME_MAJOR_VERSION=114  # Matching major version for Chrome 114
+        CHROMEDRIVER_VERSION="114.0.5735.90"  # Exact version that matches Chrome
         
-        # Install ChromeDriver
-        CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION%.*}")
         echo "Installing ChromeDriver version: $CHROMEDRIVER_VERSION"
-        wget -q "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip"
-        unzip -q chromedriver_linux64.zip
-        sudo mv chromedriver /usr/local/bin/chromedriver
-        sudo chmod +x /usr/local/bin/chromedriver
-        chromedriver --version
+        wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip"
+        unzip -q chromedriver_linux64.zip -d /usr/local/bin/
+        chmod +x /usr/local/bin/chromedriver
+        
+        # Verify ChromeDriver installation
+        echo "ChromeDriver version: $(chromedriver --version)"
     
     - name: Install Python dependencies
       run: |
