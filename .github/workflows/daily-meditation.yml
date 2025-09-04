@@ -67,17 +67,14 @@ jobs:
           # Save debug info
           collect_debug_info > debug_logs/environment_info.txt
           
-          # Create config.json with proper JSON formatting
-          echo '{
-            "gvoice": {
-              "email": "'"$GVOICE_EMAIL"'",
-              "password": "'"$GVOICE_PASSWORD"'",
-              "number": "'"$GVOICE_NUMBER"'"
-            },
-            "recipients": "'"$RECIPIENTS"'".split(","),
-            "history_size": 7,
-            "history": []
-          }' > config.json
+          # Debug: Print environment variables (without sensitive data)
+          echo "DEBUG: GVOICE_EMAIL length: ${#GVOICE_EMAIL} chars"
+          echo "DEBUG: GVOICE_NUMBER: $GVOICE_NUMBER"
+          echo "DEBUG: RECIPIENTS: $RECIPIENTS"
+          
+          # Create config.json using the setup script
+          mkdir -p scripts
+          python3 scripts/setup_config.py || (echo "Failed to create valid config.json" && exit 1)
           
           # Set up virtual display with larger screen size
           export DISPLAY=:99
