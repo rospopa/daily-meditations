@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0  # Fetch all history for all branches
+          token: ${{ secrets.GITHUB_TOKEN }}  # Use the GITHUB_TOKEN for authentication
         
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -115,26 +116,27 @@ jobs:
             screenshots/
           retention-days: 7
           
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-          
-      - name: Check for changes and commit
+      - name: Commit and push changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+          # Configure Git
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
+          
+          # Get the current branch name
+          BRANCH=${GITHUB_REF#refs/heads/}
           
           # Check for changes in config.json
           if ! git diff --quiet -- config.json; then
             echo "Changes detected in config.json, committing..."
             git add config.json
             git commit -m "Update meditation history [skip ci]"
-            git push origin main
-            echo "Changes pushed successfully"
+            
+            # Push using the GITHUB_TOKEN
+            git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+            git push origin HEAD:${BRANCH}
+            echo "Changes pushed successfully to ${BRANCH}"
           else
             echo "No changes to commit"
           fi
