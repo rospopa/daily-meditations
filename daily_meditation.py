@@ -158,20 +158,69 @@ def send_sms(config, meditation, meditation_number):
             print("Saved screenshot: google_voice_homepage.png")
             
             # Check if we're already on the login page or need to click sign in
-            try:
-                # First check if we're already on the login page
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.ID, "identifierId"))
-                )
-                print("Already on login page")
-            except:
-                # If not, try to click sign in button
+            print("Checking current page...")
+            time.sleep(2)  # Let the page load
+            
+            # Take a screenshot of the current page
+            driver.save_screenshot("initial_page.png")
+            print("Saved screenshot: initial_page.png")
+            
+            # Try to detect if we're on a Google sign-in page
+            if "accounts.google.com" in driver.current_url or any(
+                x in driver.page_source.lower() 
+                for x in ["sign in", "signin", "log in", "login"]
+            ):
+                print("Detected Google sign-in page")
+                # Save page source for debugging
+                with open("page_source.html", "w", encoding="utf-8") as f:
+                    f.write(driver.page_source)
+                print("Saved page source to page_source.html")
+            else:
                 try:
                     print("Looking for sign in button...")
-                    sign_in_btn = WebDriverWait(driver, 20).until(
-                        EC.element_to_be_clickable((By.XPATH, "//a[contains(text(),'Sign in') or contains(text(),'Sign in to Google')]"))
+                    # Try multiple possible sign-in button selectors
+                    sign_in_selectors = [
+                        (By.XPATH, "//a[contains(., 'Sign in') or contains(., 'Sign in to Google')]"),
+                        (By.XPATH, "//button[contains(., 'Sign in')]"),
+                        (By.XPATH, "//span[contains(., 'Sign in')]/ancestor::button"),
+                        (By.XPATH, "//div[contains(@aria-label, 'Sign in')]")
+                    ]
+                    
+                    sign_in_btn = None
+                    for selector in sign_in_selectors:
+                        try:
+                            sign_in_btn = WebDriverWait(driver, 10).until(
+                                EC.element_to_be_clickable(selector)
+                            )
+                            print(f"Found sign in button with selector: {selector}")
+                            break
+                        except:
+                            continue
+                    
+                    if not sign_in_btn:
+                        raise Exception("Could not find sign in button with any selector")
+                    
+                    # Scroll into view and click using JavaScript
+                    driver.execute_script("arguments[0].scrollIntoView(true);", sign_in_btn)
+                    time.sleep(1)
+                    driver.execute_script("arguments[0].click();", sign_in_btn)
+                    print("Clicked sign in button")
+                    
+                    # Wait for the login page to load
+                    WebDriverWait(driver, 20).until(
+                        lambda d: "accounts.google.com" in d.current_url or 
+                                any(x in d.page_source.lower() for x in ["sign in", "signin", "log in", "login"])
                     )
-                    sign_in_btn.click()
+                    print("Navigated to login page")
+                    
+                except Exception as e:
+                    print(f"Error during sign in: {str(e)}")
+                    driver.save_screenshot("sign_in_error.png")
+                    with open("page_source.html", "w", encoding="utf-8") as f:
+                        f.write(driver.page_source)
+                    print("Saved screenshot: sign_in_error.png")
+                    print("Saved page source to page_source.html")
+                    raise
                     print("Clicked sign in button")
                     
                     # Wait for login page to load
