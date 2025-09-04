@@ -1,11 +1,14 @@
 {
-    "email": {
-        "sender_email": "",
-        "sender_password": "",
-        "recipient_email": "",
-        "smtp_server": "smtp.gmail.com",
-        "smtp_port": 587
+    "gvoice": {
+        "email": "pavlo@rospopa.com",
+        "password": "deza ljat lwmu rvim",
+        "number": "+13477464117"
     },
-    "last_sent_date": "",
-    "sent_proverbs": []
+    "recipients": [
+        "+17733135785"
+    ],
+    "history_size": 7,
+    "history": [
+        8
+    ]
 }
