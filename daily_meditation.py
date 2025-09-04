@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 import random
-import smtplib
-import ssl
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import datetime
 import os
 import json
+import time
 from pathlib import Path
 import sys
+from gvoice import GVoice
 
 # Configuration file path
 CONFIG_FILE = Path(__file__).parent / "config.json"
@@ -89,14 +86,12 @@ def load_config():
     except FileNotFoundError:
         # Default configuration
         return {
-            "email": {
-                "smtp_server": "smtp.gmail.com",
-                "port": 587,
-                "sender_email": "your-email@gmail.com",
-                "password": "your-app-specific-password",
-                "subject": "Daily Meditation"
+            "gvoice": {
+                "email": "your-email@gmail.com",
+                "password": "your-google-password",
+                "phone_number": "your-google-voice-number"
             },
-            "recipients": ["recipient@example.com"],
+            "recipients": ["+1234567890"],  # List of phone numbers with country code
             "history_size": 7,
             "history": []
         }
@@ -128,54 +123,43 @@ def select_random_meditation(config):
     
     return MEDITATIONS[selected], selected + 1
 
-def send_email(config, meditation, meditation_number):
-    """Send an email with the daily meditation to all recipients."""
-    email_config = config["email"]
+def send_sms(config, meditation, meditation_number):
+    """Send an SMS with the daily meditation to all recipients."""
+    gvoice_config = config["gvoice"]
     
-    # Create message
-    message = MIMEMultipart("alternative")
-    message["Subject"] = f"{email_config['subject']} #{meditation_number}"
-    message["From"] = email_config["sender_email"]
-    message["To"] = ", ".join(config["recipients"])
-    
-    # Create HTML content
-    html = f"""\
-    <html>
-      <body>
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #333366;">Your Daily Meditation</h2>
-          <div style="background-color: #f9f9f9; padding: 20px; border-left: 5px solid #6666cc; margin: 20px 0;">
-            <p style="font-style: italic; font-size: 1.2em; line-height: 1.6;">{meditation}</p>
-          </div>
-          <p style="color: #666666; font-size: 0.9em;">
-            Meditation #{meditation_number} • {date}
-          </p>
-          <p style="color: #999999; font-size: 0.8em; margin-top: 30px;">
-            To unsubscribe or update your preferences, please reply to this email.
-          </p>
-        </div>
-      </body>
-    </html>
-    """.format(meditation=meditation, 
-               date=datetime.datetime.now().strftime("%B %d, %Y"))
-    
-    # Attach HTML content
-    part = MIMEText(html, "html")
-    message.attach(part)
-    
-    # Send email
-    context = ssl.create_default_context()
-    with smtplib.SMTP(email_config["smtp_server"], email_config["port"]) as server:
-        server.starttls(context=context)
-        server.login(email_config["sender_email"], email_config["password"])
-        server.sendmail(
-            email_config["sender_email"], 
-            config["recipients"], 
-            message.as_string()
-        )
+    try:
+        # Initialize GVoice
+        gv = GVoice()
+        
+        # Login to Google Voice
+        if not gv.login(gvoice_config["email"], gvoice_config["password"]):
+            raise Exception("Failed to login to Google Voice")
+        
+        # Send SMS to each recipient
+        for recipient in config["recipients"]:
+            try:
+                # Format the message with meditation number and content
+                message = f"Daily Meditation #{meditation_number}:\n\n{meditation}"
+                
+                # Send the SMS
+                if gv.send_sms(recipient, message):
+                    print(f"Successfully sent SMS to {recipient}")
+                else:
+                    print(f"Failed to send SMS to {recipient}")
+                
+                # Add delay between messages to avoid rate limiting
+                time.sleep(2)
+                
+            except Exception as e:
+                print(f"Error sending to {recipient}: {str(e)}")
+                continue
+                
+    except Exception as e:
+        print(f"Failed to send SMS: {e}")
+        raise
 
 def main():
-    """Main function to send daily meditation."""
+    """Main function to send daily meditation via SMS."""
     try:
         # Load configuration
         config = load_config()
@@ -183,13 +167,13 @@ def main():
         # Select a random meditation
         meditation, meditation_number = select_random_meditation(config)
         
-        # Send email
-        send_email(config, meditation, meditation_number)
-        print(f"Successfully sent meditation #{meditation_number}")
+        # Send SMS
+        send_sms(config, meditation, meditation_number)
+        print(f"Successfully sent meditation #{meditation_number} via SMS")
         return 0
         
     except Exception as e:
-        print(f"Error: {str(e)}", file=sys.stderr)
+        print(f"Error: {e}")
         return 1
 
 if __name__ == "__main__":
