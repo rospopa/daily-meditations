@@ -5,7 +5,8 @@ import json
 import time
 from pathlib import Path
 import sys
-from gvoice import GVoice
+from googlevoice import Voice
+from googlevoice.util import input
 
 # Configuration file path
 CONFIG_FILE = Path(__file__).parent / "config.json"
@@ -128,11 +129,14 @@ def send_sms(config, meditation, meditation_number):
     gvoice_config = config["gvoice"]
     
     try:
-        # Initialize GVoice
-        gv = GVoice()
+        # Initialize Voice
+        voice = Voice()
         
         # Login to Google Voice
-        if not gv.login(gvoice_config["email"], gvoice_config["password"]):
+        try:
+            voice.login(gvoice_config["email"], gvoice_config["password"])
+        except Exception as e:
+            print(f"Login failed: {e}")
             raise Exception("Failed to login to Google Voice")
         
         # Send SMS to each recipient
@@ -142,13 +146,14 @@ def send_sms(config, meditation, meditation_number):
                 message = f"Daily Meditation #{meditation_number}:\n\n{meditation}"
                 
                 # Send the SMS
-                if gv.send_sms(recipient, message):
+                try:
+                    voice.send_sms(recipient, message)
                     print(f"Successfully sent SMS to {recipient}")
-                else:
-                    print(f"Failed to send SMS to {recipient}")
+                except Exception as e:
+                    print(f"Failed to send SMS to {recipient}: {e}")
                 
                 # Add delay between messages to avoid rate limiting
-                time.sleep(2)
+                time.sleep(5)  # Increased delay for better reliability
                 
             except Exception as e:
                 print(f"Error sending to {recipient}: {str(e)}")
