@@ -24,47 +24,44 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install gvoice
+          pip install googlevoice-python
+          sudo apt-get update
+          sudo apt-get install -y xvfb python3-selenium firefox
           
       - name: Run daily meditation script
         env:
-          # These secrets need to be set in your repository's settings
           GVOICE_EMAIL: ${{ secrets.GVOICE_EMAIL }}
           GVOICE_PASSWORD: ${{ secrets.GVOICE_PASSWORD }}
           GVOICE_NUMBER: ${{ secrets.GVOICE_NUMBER }}
           RECIPIENTS: ${{ secrets.RECIPIENTS }}
         run: |
-          # Create config.json if it doesn't exist
-          if [ ! -f config.json ]; then
-            echo '{
-              "gvoice": {
-                "email": "'"$GVOICE_EMAIL"'",
-                "password": "'"$GVOICE_PASSWORD"'",
-                "phone_number": "'"$GVOICE_NUMBER"'"
-              },
-              "recipients": ["'"$RECIPIENTS"'"],
-              "history_size": 7,
-              "history": []
-            }' > config.json
-          else
-            # Update existing config with GVoice settings
-            jq --arg email "$GVOICE_EMAIL" \
-               --arg pass "$GVOICE_PASSWORD" \
-               --arg num "$GVOICE_NUMBER" \
-               --argjson rec "[\"$RECIPIENTS\"]" '
-              .gvoice = {
-                email: $email,
-                password: $pass,
-                phone_number: $num
-              } | .recipients = $rec' config.json > config.tmp && mv config.tmp config.json
-          fi
+          # Install required packages
+          sudo apt-get update
+          sudo apt-get install -y jq xvfb firefox
           
-          # Install jq if not already installed (for JSON processing)
-          sudo apt-get update && sudo apt-get install -y jq
+          # Install geckodriver for Firefox
+          wget https://github.com/mozilla/geckodriver/releases/download/v0.33.0/geckodriver-v0.33.0-linux64.tar.gz
+          tar -xvzf geckodriver-v0.33.0-linux64.tar.gz
+          chmod +x geckodriver
+          sudo mv geckodriver /usr/local/bin/
           
-          # Run the script with headless browser support
+          # Create config.json
+          echo '{
+            "gvoice": {
+              "email": "'"$GVOICE_EMAIL"'",
+              "password": "'"$GVOICE_PASSWORD"'",
+              "phone_number": "'"$GVOICE_NUMBER"'"
+            },
+            "recipients": ["'"$RECIPIENTS"'"],
+            "history_size": 7,
+            "history": []
+          }' > config.json
+          
+          # Set display for headless browser
           export DISPLAY=:99
-          /usr/bin/Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+          Xvfb :99 -screen 0 1024x768x16 &
+          
+          # Run the script
           python daily_meditation.py
           
       - name: Commit and push changes
