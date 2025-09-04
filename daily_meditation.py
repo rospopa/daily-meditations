@@ -3,10 +3,10 @@ import random
 import os
 import json
 import time
+import re
 from pathlib import Path
 import sys
-from googlevoice import Voice
-from googlevoice.util import input
+from pygooglevoice import Voice
 
 # Configuration file path
 CONFIG_FILE = Path(__file__).parent / "config.json"
@@ -125,7 +125,7 @@ def select_random_meditation(config):
     return MEDITATIONS[selected], selected + 1
 
 def send_sms(config, meditation, meditation_number):
-    """Send an SMS with the daily meditation to all recipients."""
+    """Send an SMS with the daily meditation to all recipients using Google Voice."""
     gvoice_config = config["gvoice"]
     
     try:
@@ -139,24 +139,24 @@ def send_sms(config, meditation, meditation_number):
             print(f"Login failed: {e}")
             raise Exception("Failed to login to Google Voice")
         
+        # Format the message
+        message = f"Daily Meditation #{meditation_number}:\n\n{meditation}"
+        
         # Send SMS to each recipient
         for recipient in config["recipients"]:
             try:
-                # Format the message with meditation number and content
-                message = f"Daily Meditation #{meditation_number}:\n\n{meditation}"
+                # Clean the phone number (remove all non-numeric characters except +)
+                phone = re.sub(r'[^\d+]', '', recipient)
                 
                 # Send the SMS
-                try:
-                    voice.send_sms(recipient, message)
-                    print(f"Successfully sent SMS to {recipient}")
-                except Exception as e:
-                    print(f"Failed to send SMS to {recipient}: {e}")
+                voice.send_sms(phone, message)
+                print(f"Successfully sent SMS to {phone}")
                 
                 # Add delay between messages to avoid rate limiting
-                time.sleep(5)  # Increased delay for better reliability
+                time.sleep(5)
                 
             except Exception as e:
-                print(f"Error sending to {recipient}: {str(e)}")
+                print(f"Failed to send SMS to {recipient}: {str(e)}")
                 continue
                 
     except Exception as e:
