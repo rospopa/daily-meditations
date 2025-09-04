@@ -170,7 +170,7 @@ jobs:
     
     - name: Upload debug artifacts
       if: always()  # Run this step even if previous steps failed
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: debug-artifacts
         path: |
@@ -215,7 +215,7 @@ jobs:
         echo "summary_file=$SUMMARY_FILE" >> $GITHUB_OUTPUT
         
     - name: Upload Debug Summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: debug-summary
         path: ${{ steps.parse-logs.outputs.summary_file }}
