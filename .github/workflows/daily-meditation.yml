@@ -21,12 +21,20 @@ jobs:
         with:
           python-version: '3.10'
           
-      - name: Install dependencies
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 'latest'
+          
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pygooglevoice
+          pip install selenium webdriver-manager
+          
+      - name: Install system dependencies
+        run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb firefox-esr
+          sudo apt-get install -y xvfb libxi6 libgconf-2-4
           
       - name: Run daily meditation script
         env:
@@ -35,31 +43,23 @@ jobs:
           GVOICE_NUMBER: ${{ secrets.GVOICE_NUMBER }}
           RECIPIENTS: ${{ secrets.RECIPIENTS }}
         run: |
-          # Install required packages
-          sudo apt-get update
-          sudo apt-get install -y jq xvfb firefox-esr
-          
-          # Install geckodriver
-          wget https://github.com/mozilla/geckodriver/releases/download/v0.33.0/geckodriver-v0.33.0-linux64.tar.gz
-          tar -xvzf geckodriver-*.tar.gz
-          chmod +x geckodriver
-          sudo mv geckodriver /usr/local/bin/
+          # Install jq for JSON processing
+          sudo apt-get update && sudo apt-get install -y jq
           
           # Create config.json
           echo '{
             "gvoice": {
               "email": "'"$GVOICE_EMAIL"'",
-              "password": "'"$GVOICE_PASSWORD"'",
-              "phone_number": "'"$GVOICE_NUMBER"'"
+              "password": "'"$GVOICE_PASSWORD"'"
             },
             "recipients": ["'"$RECIPIENTS"'"],
             "history_size": 7,
             "history": []
           }' > config.json
           
-          # Set up virtual display for headless browser
+          # Set up virtual display
           export DISPLAY=:99
-          Xvfb :99 -screen 0 1024x768x16 &
+          Xvfb :99 -screen 0 1920x1080x16 &
           
           # Run the script
           python daily_meditation.py
