@@ -149,56 +149,134 @@ def send_sms(config, meditation, meditation_number):
         
         try:
             # Navigate to Google Voice
+            print("Navigating to Google Voice...")
             driver.get("https://voice.google.com")
             print("Opened Google Voice homepage")
             
-            # Wait for and click sign in button
+            # Save screenshot for debugging
+            driver.save_screenshot("google_voice_homepage.png")
+            print("Saved screenshot: google_voice_homepage.png")
+            
+            # Check if we're already on the login page or need to click sign in
             try:
-                sign_in_btn = WebDriverWait(driver, 20).until(
-                    EC.element_to_be_clickable((By.XPATH, "//a[contains(text(),'Sign in')]"))
+                # First check if we're already on the login page
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "identifierId"))
                 )
-                sign_in_btn.click()
-                print("Clicked sign in button")
-            except Exception as e:
-                print("Might already be on login page")
+                print("Already on login page")
+            except:
+                # If not, try to click sign in button
+                try:
+                    print("Looking for sign in button...")
+                    sign_in_btn = WebDriverWait(driver, 20).until(
+                        EC.element_to_be_clickable((By.XPATH, "//a[contains(text(),'Sign in') or contains(text(),'Sign in to Google')]"))
+                    )
+                    sign_in_btn.click()
+                    print("Clicked sign in button")
+                    
+                    # Wait for login page to load
+                    WebDriverWait(driver, 20).until(
+                        EC.presence_of_element_located((By.ID, "identifierId"))
+                    )
+                    print("Login page loaded")
+                except Exception as e:
+                    print(f"Error during sign in: {str(e)}")
+                    driver.save_screenshot("sign_in_error.png")
+                    print("Saved screenshot: sign_in_error.png")
+                    raise
             
             # Handle email entry
             try:
-                email_field = WebDriverWait(driver, 20).until(
+                print("Waiting for email field...")
+                email_field = WebDriverWait(driver, 30).until(
                     EC.visibility_of_element_located((By.ID, "identifierId"))
                 )
+                print("Email field found, entering email...")
                 email_field.clear()
+                time.sleep(1)  # Small delay
                 email_field.send_keys(gvoice_config["email"])
-                print("Entered email")
+                print("Email entered")
+                
+                # Save screenshot before clicking next
+                driver.save_screenshot("before_email_next.png")
                 
                 # Click next
-                next_btn = WebDriverWait(driver, 10).until(
+                print("Looking for next button...")
+                next_btn = WebDriverWait(driver, 30).until(
                     EC.element_to_be_clickable((By.ID, "identifierNext"))
                 )
-                next_btn.click()
+                # Scroll into view and click using JavaScript
+                driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
+                time.sleep(1)
+                driver.execute_script("arguments[0].click();", next_btn)
                 print("Clicked next after email")
+                
+                # Wait for password field to appear
+                time.sleep(2)  # Wait for any animations
+                driver.save_screenshot("after_email_next.png")
+                
             except Exception as e:
-                print(f"Email entry failed: {e}")
+                print(f"Email entry failed: {str(e)}")
+                driver.save_screenshot("email_entry_error.png")
+                print("Saved screenshot: email_entry_error.png")
                 raise
             
             # Handle password entry
             try:
-                password_field = WebDriverWait(driver, 20).until(
-                    EC.visibility_of_element_located((By.NAME, "Passwd"))
-                )
-                time.sleep(2)  # Small delay
-                password_field.clear()
-                password_field.send_keys(gvoice_config["password"])
-                print("Entered password")
+                print("Waiting for password field...")
+                # Try multiple possible password field selectors
+                password_selectors = [
+                    (By.NAME, "Passwd"),
+                    (By.NAME, "password"),
+                    (By.XPATH, "//input[@type='password']")
+                ]
                 
-                # Click next
-                next_btn = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.ID, "passwordNext"))
+                password_field = None
+                for selector in password_selectors:
+                    try:
+                        password_field = WebDriverWait(driver, 10).until(
+                            EC.visibility_of_element_located(selector)
+                        )
+                        print(f"Found password field using {selector}")
+                        break
+                    except:
+                        continue
+                
+                if not password_field:
+                    raise Exception("Could not find password field with any selector")
+                
+                print("Password field found, entering password...")
+                password_field.clear()
+                time.sleep(1)
+                password_field.send_keys(gvoice_config["password"])
+                print("Password entered")
+                
+                # Save screenshot before clicking sign in
+                driver.save_screenshot("before_sign_in.png")
+                
+                # Find and click sign in button
+                print("Looking for sign in button...")
+                sign_in_btn = WebDriverWait(driver, 30).until(
+                    EC.element_to_be_clickable((
+                        By.XPATH, 
+                        "//button[contains(., 'Next') or contains(., 'Sign in') or @id='passwordNext']"
+                    ))
                 )
-                next_btn.click()
+                
+                # Scroll into view and click using JavaScript
+                driver.execute_script("arguments[0].scrollIntoView(true);", sign_in_btn)
+                time.sleep(1)
+                driver.execute_script("arguments[0].click();", sign_in_btn)
                 print("Clicked sign in button")
+                
+                # Wait for Google Voice to load
+                time.sleep(5)  # Wait for any redirects
+                driver.save_screenshot("after_sign_in.png")
+                
             except Exception as e:
-                print(f"Password entry failed: {e}")
+                print(f"Password entry failed: {str(e)}")
+                driver.save_screenshot("password_entry_error.png")
+                print("Saved screenshot: password_entry_error.png")
                 raise
             
             # Wait for Google Voice to load
