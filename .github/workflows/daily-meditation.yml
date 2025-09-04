@@ -43,26 +43,77 @@ jobs:
           GVOICE_NUMBER: ${{ secrets.GVOICE_NUMBER }}
           RECIPIENTS: ${{ secrets.RECIPIENTS }}
         run: |
-          # Install jq for JSON processing
-          sudo apt-get update && sudo apt-get install -y jq
+          set -e  # Exit immediately if a command exits with a non-zero status
           
-          # Create config.json
+          # Create debug directory
+          mkdir -p debug_logs
+          
+          # Function to collect debug info
+          collect_debug_info() {
+            echo "=== DEBUG INFO ==="
+            echo "Current directory: $(pwd)"
+            echo "Files in current directory:"
+            ls -la
+            echo "\n=== CHROME VERSION ==="
+            google-chrome --version || echo "Chrome not found"
+            echo "\n=== CHROMEDRIVER VERSION ==="
+            chromedriver --version || echo "Chromedriver not found"
+            echo "\n=== PYTHON VERSION ==="
+            python --version
+            echo "\n=== SELENIUM VERSION ==="
+            python -c "import selenium; print(selenium.__version__)" || echo "Selenium not found"
+          }
+          
+          # Save debug info
+          collect_debug_info > debug_logs/environment_info.txt
+          
+          # Create config.json with proper JSON formatting
           echo '{
             "gvoice": {
               "email": "'"$GVOICE_EMAIL"'",
-              "password": "'"$GVOICE_PASSWORD"'"
+              "password": "'"$GVOICE_PASSWORD"'",
+              "number": "'"$GVOICE_NUMBER"'"
             },
-            "recipients": ["'"$RECIPIENTS"'"],
+            "recipients": "'"$RECIPIENTS"'".split(","),
             "history_size": 7,
             "history": []
           }' > config.json
           
-          # Set up virtual display
+          # Set up virtual display with larger screen size
           export DISPLAY=:99
-          Xvfb :99 -screen 0 1920x1080x16 &
+          Xvfb :99 -screen 0 1920x1080x24 > xvfb.log 2>&1 &
           
-          # Run the script
-          python daily_meditation.py
+          # Run the script with output logging
+          echo "Starting script..."
+          set +e  # Don't exit on error so we can collect artifacts
+          python daily_meditation.py 2>&1 | tee debug_logs/script_output.log
+          SCRIPT_EXIT_CODE=${PIPESTATUS[0]}
+          
+          # Collect any screenshots or debug files
+          mkdir -p screenshots
+          mv *.png screenshots/ 2>/dev/null || true
+          mv *.html debug_logs/ 2>/dev/null || true
+          
+          # Save Xvfb logs
+          if [ -f xvfb.log ]; then
+            mv xvfb.log debug_logs/
+          fi
+          
+          # Upload debug artifacts
+          echo "Uploading debug artifacts..."
+          
+          # Exit with the script's exit code
+          exit $SCRIPT_EXIT_CODE
+          
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug-artifacts
+          path: |
+            debug_logs/
+            screenshots/
+          retention-days: 7
           
       - name: Commit and push changes
         run: |
