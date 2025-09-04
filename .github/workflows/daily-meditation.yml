@@ -117,12 +117,21 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           
-      - name: Commit and push changes
+      - name: Check for changes and commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git add config.json
-          if ! git diff --quiet && ! git diff --staged --quiet; then
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          
+          # Check for changes in config.json
+          if ! git diff --quiet -- config.json; then
+            echo "Changes detected in config.json, committing..."
+            git add config.json
             git commit -m "Update meditation history [skip ci]"
-            git push
+            git push origin main
+            echo "Changes pushed successfully"
           else
             echo "No changes to commit"
           fi
