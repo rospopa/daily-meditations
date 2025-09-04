@@ -6,7 +6,12 @@ import time
 import re
 from pathlib import Path
 import sys
-from pygooglevoice import Voice
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # Configuration file path
 CONFIG_FILE = Path(__file__).parent / "config.json"
@@ -125,40 +130,167 @@ def select_random_meditation(config):
     return MEDITATIONS[selected], selected + 1
 
 def send_sms(config, meditation, meditation_number):
-    """Send an SMS with the daily meditation to all recipients using Google Voice."""
+    """Send an SMS with the daily meditation to all recipients using Google Voice via Selenium."""
     gvoice_config = config["gvoice"]
     
     try:
-        # Initialize Voice
-        voice = Voice()
+        # Set up Chrome options
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
         
-        # Login to Google Voice
+        # Initialize Chrome WebDriver with webdriver-manager
+        from webdriver_manager.chrome import ChromeDriverManager
+        from selenium.webdriver.chrome.service import Service as ChromeService
+        
+        service = ChromeService(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
         try:
-            voice.login(gvoice_config["email"], gvoice_config["password"])
-        except Exception as e:
-            print(f"Login failed: {e}")
-            raise Exception("Failed to login to Google Voice")
-        
-        # Format the message
-        message = f"Daily Meditation #{meditation_number}:\n\n{meditation}"
-        
-        # Send SMS to each recipient
-        for recipient in config["recipients"]:
+            # Navigate to Google Voice
+            driver.get("https://voice.google.com")
+            print("Opened Google Voice homepage")
+            
+            # Wait for and click sign in button
             try:
-                # Clean the phone number (remove all non-numeric characters except +)
-                phone = re.sub(r'[^\d+]', '', recipient)
-                
-                # Send the SMS
-                voice.send_sms(phone, message)
-                print(f"Successfully sent SMS to {phone}")
-                
-                # Add delay between messages to avoid rate limiting
-                time.sleep(5)
-                
+                sign_in_btn = WebDriverWait(driver, 20).until(
+                    EC.element_to_be_clickable((By.XPATH, "//a[contains(text(),'Sign in')]"))
+                )
+                sign_in_btn.click()
+                print("Clicked sign in button")
             except Exception as e:
-                print(f"Failed to send SMS to {recipient}: {str(e)}")
-                continue
+                print("Might already be on login page")
+            
+            # Handle email entry
+            try:
+                email_field = WebDriverWait(driver, 20).until(
+                    EC.visibility_of_element_located((By.ID, "identifierId"))
+                )
+                email_field.clear()
+                email_field.send_keys(gvoice_config["email"])
+                print("Entered email")
                 
+                # Click next
+                next_btn = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "identifierNext"))
+                )
+                next_btn.click()
+                print("Clicked next after email")
+            except Exception as e:
+                print(f"Email entry failed: {e}")
+                raise
+            
+            # Handle password entry
+            try:
+                password_field = WebDriverWait(driver, 20).until(
+                    EC.visibility_of_element_located((By.NAME, "Passwd"))
+                )
+                time.sleep(2)  # Small delay
+                password_field.clear()
+                password_field.send_keys(gvoice_config["password"])
+                print("Entered password")
+                
+                # Click next
+                next_btn = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "passwordNext"))
+                )
+                next_btn.click()
+                print("Clicked sign in button")
+            except Exception as e:
+                print(f"Password entry failed: {e}")
+                raise
+            
+            # Wait for Google Voice to load
+            print("Waiting for Google Voice to load...")
+            time.sleep(15)  # Increased wait time for page to load
+            
+            # Verify login was successful
+            try:
+                WebDriverWait(driver, 20).until(
+                    EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Messages')]"))
+                )
+                print("Successfully logged in to Google Voice")
+            except Exception as e:
+                print("Failed to verify Google Voice login")
+                # Take a screenshot for debugging
+                driver.save_screenshot("login_error.png")
+                print("Saved screenshot as login_error.png")
+                raise
+            
+            # Format the message
+            message = f"Daily Meditation #{meditation_number}:\n\n{meditation}"
+            
+            # Send SMS to each recipient
+            for recipient in config["recipients"]:
+                try:
+                    # Clean the phone number
+                    phone = re.sub(r'[^\d+]', '', recipient)
+                    
+                    try:
+                        # Click on Messages tab
+                        print(f"Attempting to send to {phone}...")
+                        messages_btn = WebDriverWait(driver, 20).until(
+                            EC.element_to_be_clickable((By.XPATH, "//div[contains(text(),'Messages')]"))
+                        )
+                        messages_btn.click()
+                        print("Clicked Messages tab")
+                        time.sleep(2)
+                        
+                        # Click on New Message
+                        new_msg_btn = WebDriverWait(driver, 20).until(
+                            EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label,'New message')]"))
+                        )
+                        new_msg_btn.click()
+                        print("Clicked New Message button")
+                        time.sleep(2)
+                        
+                        # Enter phone number
+                        to_field = WebDriverWait(driver, 20).until(
+                            EC.visibility_of_element_located((By.XPATH, "//input[@placeholder='Enter a name or phone number']"))
+                        )
+                        to_field.clear()
+                        to_field.send_keys(phone)
+                        print(f"Entered phone number: {phone}")
+                        time.sleep(1)
+                        
+                        # Enter message
+                        msg_field = WebDriverWait(driver, 20).until(
+                            EC.visibility_of_element_located((By.XPATH, "//div[@role='textbox']"))
+                        )
+                        msg_field.clear()
+                        msg_field.send_keys(message)
+                        print("Entered message")
+                        time.sleep(1)
+                        
+                        # Click send
+                        send_btn = WebDriverWait(driver, 20).until(
+                            EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label,'Send message')]"))
+                        )
+                        send_btn.click()
+                        print(f"Successfully sent SMS to {phone}")
+                        
+                        # Wait for message to send
+                        time.sleep(5)
+                        
+                        # Take a screenshot for verification
+                        driver.save_screenshot(f"sent_{phone}.png")
+                        print(f"Saved screenshot as sent_{phone}.png")
+                        
+                    except Exception as e:
+                        print(f"Error in sending process: {e}")
+                        # Take a screenshot on error
+                        driver.save_screenshot(f"error_{phone}.png")
+                        print(f"Saved error screenshot as error_{phone}.png")
+                        raise
+                    
+                except Exception as e:
+                    print(f"Failed to send SMS to {recipient}: {str(e)}")
+                    continue
+                    
+        finally:
+            driver.quit()
+            
     except Exception as e:
         print(f"Failed to send SMS: {e}")
         raise
