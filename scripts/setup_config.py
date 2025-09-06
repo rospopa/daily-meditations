@@ -10,10 +10,10 @@ def main():
         
         # Create config
         data = {
-            "gvoice": {
-                "email": os.environ["GVOICE_EMAIL"],
-                "password": os.environ["GVOICE_PASSWORD"],
-                "number": os.environ["GVOICE_NUMBER"]
+            "twilio": {
+                "account_sid": os.environ["TWILIO_ACCOUNT_SID"],
+                "auth_token": os.environ["TWILIO_AUTH_TOKEN"],
+                "phone_number": os.environ["TWILIO_PHONE_NUMBER"]
             },
             "recipients": recipients,
             "history_size": 7,
@@ -31,8 +31,8 @@ def main():
         print("Config file created and validated successfully")
         
         # Print config (with sensitive data masked)
-        if "gvoice" in data and "password" in data["gvoice"]:
-            data["gvoice"]["password"] = "***MASKED***"
+        if "twilio" in data and "auth_token" in data["twilio"]:
+            data["twilio"]["auth_token"] = "***MASKED***"
         print("Config content:")
         print(json.dumps(data, indent=2))
         
