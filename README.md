@@ -1,2 +1,2 @@
 # Daily Meditation Twilio SMS
-# NO WANDERING AROUND
+# DON'T WANDER AROUND
