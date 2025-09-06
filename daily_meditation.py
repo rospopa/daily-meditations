@@ -127,7 +127,7 @@ def send_sms(config, meditation, meditation_number):
     current_date = datetime.datetime.now().strftime("%m-%d-%Y")
     
     # Format the message
-    message_body = f"Daily Meditation ({current_date}):\n\n{meditation}"
+    message_body = f"{current_date}:\n\n{meditation}"
     print(f"Prepared message: {message_body[:50]}...")
     
     for recipient in config["recipients"]:
