@@ -1,14 +1,14 @@
 name: Send Daily Meditation
 
 on:
-schedule:
-  - cron: '30 13 * * *'  # Run daily at 7:30 AM CST (13:30 UTC)
-workflow_dispatch:  # Allow manual triggering
-  inputs:
-    test_mode:
-      description: 'Run in test mode (skips actual sending)'
-      required: false
-      default: 'false'
+  schedule:
+    - cron: '30 13 * * *'  # Run daily at 7:30 AM CST (13:30 UTC)
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      test_mode:
+        description: 'Run in test mode (skips actual sending)'
+        required: false
+        default: 'false'
 
 
 # Set environment variables that can be used across all jobs
