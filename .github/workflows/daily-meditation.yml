@@ -40,48 +40,17 @@ jobs:
       with:
         python-version: '3.10'
     
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y wget unzip xvfb libxss1 libappindicator3-1 fonts-liberation
-    
-    - name: Install Chrome and ChromeDriver
-      run: |
-        # Install specific version of Chrome that we know has a matching ChromeDriver
-        CHROME_VERSION="114.0.5735.90-1"  # A stable version with known ChromeDriver
-        
-        # Download and install Chrome
-        wget -q -O google-chrome.deb "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb"
-        sudo apt-get install -y ./google-chrome.deb
-        rm google-chrome.deb
-        
-        # Verify Chrome installation
-        echo "Installed Chrome version: $(google-chrome --version)"
-        
-        # Install matching ChromeDriver
-        CHROME_MAJOR_VERSION=114  # Matching major version for Chrome 114
-        CHROMEDRIVER_VERSION="114.0.5735.90"  # Exact version that matches Chrome
-        
-        echo "Installing ChromeDriver version: $CHROMEDRIVER_VERSION"
-        wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip"
-        unzip -q chromedriver_linux64.zip -d /usr/local/bin/
-        chmod +x /usr/local/bin/chromedriver
-        
-        # Verify ChromeDriver installation
-        echo "ChromeDriver version: $(chromedriver --version)"
-    
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install selenium==4.15.2 webdriver-manager==4.0.0 pyvirtualdisplay==3.0 python-dotenv==1.0.0
-        pip install requests pillow  # For additional debugging
+        pip install twilio requests pillow
     
     - name: Set up config
       id: config
       env:
-        GVOICE_EMAIL: ${{ secrets.GVOICE_EMAIL }}
-        GVOICE_PASSWORD: ${{ secrets.GVOICE_PASSWORD }}
-        GVOICE_NUMBER: ${{ secrets.GVOICE_NUMBER }}
+        TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
         RECIPIENTS: ${{ secrets.RECIPIENTS }}
       run: |
         echo "Creating config file..."
@@ -108,35 +77,6 @@ jobs:
         DEBUG_DIR="debug_logs/run_${TIMESTAMP}"
         mkdir -p "$DEBUG_DIR"
         
-        # Set display for headless mode
-        export DISPLAY=:99
-        Xvfb :99 -screen 0 1920x1080x24 > "$DEBUG_DIR/xvfb.log" 2>&1 &
-        XVFB_PID=$!
-        
-        # Function to capture debug info
-        capture_debug() {
-            local prefix=$1
-            # Take screenshot if display is available
-            if [ -f "/usr/bin/import" ]; then
-                import -window root "$DEBUG_DIR/${prefix}_screenshot.png"
-            fi
-            # Save process info
-            ps aux > "$DEBUG_DIR/${prefix}_processes.txt"
-            # Save memory info
-            free -m > "$DEBUG_DIR/${prefix}_memory.txt"
-            # Save disk space
-            df -h > "$DEBUG_DIR/${prefix}_disk.txt"
-        }
-        
-        # Install scrot for screenshots if not present
-        if ! command -v import &> /dev/null; then
-            echo "Installing imagemagick for screenshots..."
-            sudo apt-get install -y imagemagick
-        fi
-        
-        # Initial debug capture
-        capture_debug "startup"
-        
         # Run the script with debug output
         echo "Starting meditation script..."
         echo "TEST_MODE: $TEST_MODE"
@@ -155,14 +95,6 @@ jobs:
         SCRIPT_EXIT_CODE=${PIPESTATUS[0]}
         echo "Script exited with code: $SCRIPT_EXIT_CODE"
         
-        # Final debug capture
-        capture_debug "shutdown"
-        
-        # Clean up Xvfb
-        if [ -n "$XVFB_PID" ]; then
-            kill -9 $XVFB_PID 2>/dev/null || true
-        fi
-        
         # Save the exit code to be used in subsequent steps
         echo "SCRIPT_EXIT_CODE=$SCRIPT_EXIT_CODE" >> $GITHUB_ENV
         
@@ -177,8 +109,6 @@ jobs:
         path: |
           debug_logs/
           *.log
-          *.png
-          *.html
         retention-days: 7
         compression-level: 9
         
